@@ -16,20 +16,21 @@ export class RestAPIStack extends cdk.Stack {
     // Tables 
     const retroGamesTable = new dynamodb.Table(this, "RetroGamesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      partitionKey: { name: "id", type: dynamodb.AttributeType.NUMBER },
+      partitionKey: { name: "platform", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "release_date", type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       tableName: "RetroGames",
     });
 
     
     // Functions 
-    const getRetroGameByIdFn = new lambdanode.NodejsFunction(
+    const getRetroGamesByPlatformFn = new lambdanode.NodejsFunction(
       this,
-      "GetRetroGameByIdFn",
+      "GetRetroGamesByPlatformFn",
       {
         architecture: lambda.Architecture.ARM_64,
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: `${__dirname}/../lambdas/getRetroGameById.ts`,
+        entry: `${__dirname}/../lambdas/getRetroGamesByPlatform.ts`,
         timeout: cdk.Duration.seconds(10),
         memorySize: 128,
         environment: {
@@ -72,7 +73,7 @@ export class RestAPIStack extends cdk.Stack {
         });
         
         // Permissions 
-        retroGamesTable.grantReadData(getRetroGameByIdFn)
+        retroGamesTable.grantReadData(getRetroGamesByPlatformFn)
         
         // REST API
         const api = new apig.RestApi(this, "RestAPI", {
@@ -94,10 +95,10 @@ export class RestAPIStack extends cdk.Stack {
           new apig.LambdaIntegration(getAllRetroGamesFn, { proxy: true })
         );
     
-        const retroGameEndpoint = retroGamesEndpoint.addResource("{gameId}");
+        const retroGameEndpoint = retroGamesEndpoint.addResource("{platform}");
         retroGameEndpoint.addMethod(
           "GET",
-          new apig.LambdaIntegration(getRetroGameByIdFn, { proxy: true })
+          new apig.LambdaIntegration(getRetroGamesByPlatformFn, { proxy: true })
         );
       }
     }
