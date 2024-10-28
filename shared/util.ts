@@ -1,16 +1,16 @@
 import { marshall } from "@aws-sdk/util-dynamodb";
-import { Movie } from "./types";
+import { RetroGame } from "./types";
 
-export const generateMovieItem = (movie: Movie) => {
+export const generateRetroGameItem = (retroGame: RetroGame) => {
   return {
     PutRequest: {
-      Item: marshall(movie),
+      Item: marshall(retroGame),
     },
   };
 };
 
-export const generateBatch = (data: Movie[]) => {
+export const generateBatch = (data: RetroGame[]) => {
   return data.map((e) => {
-    return generateMovieItem(e);
+    return generateRetroGameItem(e);
   });
 };
