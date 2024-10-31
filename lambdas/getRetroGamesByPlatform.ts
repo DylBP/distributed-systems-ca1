@@ -1,7 +1,6 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
-
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand, QueryCommandInput } from "@aws-sdk/lib-dynamodb";
 
 const ddbDocClient = createDDbDocClient();
 
@@ -9,8 +8,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
   try {
     // Print Event
     console.log("[EVENT]", JSON.stringify(event));
-    const parameters  = event?.pathParameters;
-    const gamePlatform = parameters?.platform;
+
+    const parameters = event?.pathParameters;
+    const gamePlatform = parameters?.platform ? parameters.platform : undefined;
+    const queryString = event.queryStringParameters || {};
 
     if (!gamePlatform) {
       return {
@@ -18,18 +19,31 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ Message: "Missing game platform" }),
+        body: JSON.stringify({ Message: "Missing game platform\n Try '{baseurl}/NES'" }),
       };
     }
 
-    const commandOutput = await ddbDocClient.send(
-      new QueryCommand({
-        TableName: process.env.TABLE_NAME,
-        KeyConditionExpression: "platform = :platform",
+    let commandInput: QueryCommandInput = {
+      TableName: process.env.TABLE_NAME,
+      KeyConditionExpression: "platform = :platform",
+      ExpressionAttributeValues: {
+        ":platform": gamePlatform
+      }
+    }
+
+    if ("title" in queryString) {
+      commandInput = {
+        ...commandInput,
+        KeyConditionExpression: `${commandInput.KeyConditionExpression} AND title = :title`,
         ExpressionAttributeValues: {
-          ":platform": gamePlatform
+          ...commandInput.ExpressionAttributeValues,
+          ":title": queryString.title
         }
-      })
+      }
+    }
+
+    const commandOutput = await ddbDocClient.send(
+      new QueryCommand(commandInput)
     );
 
     console.log("QueryCommand response: ", commandOutput);
@@ -46,6 +60,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
     const body = {
       data: commandOutput.Items,
     };
+
 
     // Return Response
     return {

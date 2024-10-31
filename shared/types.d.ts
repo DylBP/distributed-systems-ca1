@@ -17,3 +17,7 @@ export type RetroGame = {
   average_score: number,  
   review_count: number    
 }
+
+export type RetroGameQueryParams = {
+  title: string
+}

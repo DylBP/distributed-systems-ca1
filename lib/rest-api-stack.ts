@@ -17,7 +17,7 @@ export class RestAPIStack extends cdk.Stack {
     const retroGamesTable = new dynamodb.Table(this, "RetroGamesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "platform", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "release_date", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "title", type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       tableName: "RetroGames",
     });
@@ -55,6 +55,22 @@ export class RestAPIStack extends cdk.Stack {
           },
         }
         );
+
+        const newRetroGameFn = new lambdanode.NodejsFunction(
+          this,
+          "AddRetroGameFn",
+          {
+            architecture: lambda.Architecture.ARM_64,
+            runtime: lambda.Runtime.NODEJS_18_X,
+            entry: `${__dirname}/../lambdas/addRetroGame.ts`,
+            timeout: cdk.Duration.seconds(10),
+            memorySize: 128,
+            environment: {
+              TABLE_NAME: retroGamesTable.tableName,
+              REGION: 'eu-west-1',
+            },
+          }
+          );
         
         new custom.AwsCustomResource(this, "retrogamesddbInitData", {
           onCreate: {
@@ -74,6 +90,8 @@ export class RestAPIStack extends cdk.Stack {
         
         // Permissions 
         retroGamesTable.grantReadData(getRetroGamesByPlatformFn)
+        retroGamesTable.grantReadData(getAllRetroGamesFn)
+        retroGamesTable.grantReadWriteData(newRetroGameFn)
         
         // REST API
         const api = new apig.RestApi(this, "RestAPI", {
@@ -89,17 +107,27 @@ export class RestAPIStack extends cdk.Stack {
           },
         });
     
+        // GAMES ENDPOINTS ------------------
         const retroGamesEndpoint = api.root.addResource("retroGames");
         retroGamesEndpoint.addMethod(
           "GET",
           new apig.LambdaIntegration(getAllRetroGamesFn, { proxy: true })
         );
+
+        retroGamesEndpoint.addMethod(
+          "POST",
+          new apig.LambdaIntegration(newRetroGameFn, { proxy: true })
+        )
     
+
+        // GAME BY PLATFORM ENDPOINTS ---------
         const retroGameEndpoint = retroGamesEndpoint.addResource("{platform}");
         retroGameEndpoint.addMethod(
           "GET",
           new apig.LambdaIntegration(getRetroGamesByPlatformFn, { proxy: true })
         );
+
+
       }
     }
     
