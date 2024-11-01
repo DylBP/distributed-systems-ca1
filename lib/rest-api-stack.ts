@@ -56,6 +56,22 @@ export class RestAPIStack extends cdk.Stack {
         }
         );
 
+        const updateRetroGameFn = new lambdanode.NodejsFunction(
+          this,
+          "UpdateRetroGameFn",
+          {
+            architecture: lambda.Architecture.ARM_64,
+            runtime: lambda.Runtime.NODEJS_18_X,
+            entry: `${__dirname}/../lambdas/updateRetroGame.ts`,
+            timeout: cdk.Duration.seconds(10),
+            memorySize: 128,
+            environment: {
+              TABLE_NAME: retroGamesTable.tableName,
+              REGION: 'eu-west-1',
+            },
+          }
+          );
+
         const newRetroGameFn = new lambdanode.NodejsFunction(
           this,
           "AddRetroGameFn",
@@ -92,6 +108,7 @@ export class RestAPIStack extends cdk.Stack {
         retroGamesTable.grantReadData(getRetroGamesByPlatformFn)
         retroGamesTable.grantReadData(getAllRetroGamesFn)
         retroGamesTable.grantReadWriteData(newRetroGameFn)
+        retroGamesTable.grantReadWriteData(updateRetroGameFn)
         
         // REST API
         const api = new apig.RestApi(this, "RestAPI", {
@@ -118,6 +135,11 @@ export class RestAPIStack extends cdk.Stack {
           "POST",
           new apig.LambdaIntegration(newRetroGameFn, { proxy: true })
         )
+
+        retroGamesEndpoint.addMethod(
+          "PUT",
+          new apig.LambdaIntegration(updateRetroGameFn, { proxy: true })
+        )
     
 
         // GAME BY PLATFORM ENDPOINTS ---------
@@ -126,7 +148,6 @@ export class RestAPIStack extends cdk.Stack {
           "GET",
           new apig.LambdaIntegration(getRetroGamesByPlatformFn, { proxy: true })
         );
-
 
       }
     }
