@@ -8,6 +8,7 @@ import * as apig from "aws-cdk-lib/aws-apigateway"
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { generateBatch } from "../shared/util";
 import { retroGames } from "../seed/games";
+import * as iam from "aws-cdk-lib/aws-iam";
 
 export class RestAPIStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -22,6 +23,13 @@ export class RestAPIStack extends cdk.Stack {
       tableName: "RetroGames",
     });
 
+    const translatedTable = new dynamodb.Table(this, "TranslatedTable", {
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.NUMBER },
+      sortKey: { name: "lang", type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      tableName: "TranslatedTable",
+    });
     
     // Functions 
     const getRetroGamesByPlatformFn = new lambdanode.NodejsFunction(
@@ -35,6 +43,7 @@ export class RestAPIStack extends cdk.Stack {
         memorySize: 128,
         environment: {
           TABLE_NAME: retroGamesTable.tableName,
+          TRANSLATED_TABLE: translatedTable.tableName,
           REGION: 'eu-west-1',
         },
       }
@@ -103,12 +112,20 @@ export class RestAPIStack extends cdk.Stack {
             resources: [retroGamesTable.tableArn],
           }),
         });
+
+        const translatePolicy = new iam.PolicyStatement({
+          actions: ["translate:TranslateText"],
+          resources: ["*"]
+        })
         
         // Permissions 
         retroGamesTable.grantReadData(getRetroGamesByPlatformFn)
         retroGamesTable.grantReadData(getAllRetroGamesFn)
         retroGamesTable.grantReadWriteData(newRetroGameFn)
         retroGamesTable.grantReadWriteData(updateRetroGameFn)
+        translatedTable.grantReadWriteData(getRetroGamesByPlatformFn)
+        
+        getRetroGamesByPlatformFn.addToRolePolicy(translatePolicy)
         
         // REST API
         const api = new apig.RestApi(this, "RestAPI", {
