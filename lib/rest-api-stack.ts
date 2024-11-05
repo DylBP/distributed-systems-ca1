@@ -10,9 +10,14 @@ import { generateBatch } from "../shared/util";
 import { retroGames } from "../seed/games";
 import * as iam from "aws-cdk-lib/aws-iam";
 
-export class RestAPIStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
+type AppApiProps = {
+  userPoolId: string
+  userPoolClientId: string
+}
+
+export class RestAPIStack extends Construct {
+  constructor(scope: Construct, id: string, props: AppApiProps) {
+    super(scope, id);
 
     // Tables 
     const retroGamesTable = new dynamodb.Table(this, "RetroGamesTable", {
@@ -30,142 +35,140 @@ export class RestAPIStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       tableName: "TranslatedTable",
     });
-    
+
+    // CommonProps
+    const appCommonFnProps = {
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 128,
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: "handler",
+      environment: {
+        USER_POOL_ID: props.userPoolId,
+        CLIENT_ID: props.userPoolClientId,
+        REGION: cdk.Aws.REGION,
+        TABLE_NAME: retroGamesTable.tableName
+      },
+    };
+
     // Functions 
-    const getRetroGamesByPlatformFn = new lambdanode.NodejsFunction(
-      this,
-      "GetRetroGamesByPlatformFn",
-      {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_18_X,
-        entry: `${__dirname}/../lambdas/getRetroGamesByPlatform.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: retroGamesTable.tableName,
-          TRANSLATED_TABLE: translatedTable.tableName,
-          REGION: 'eu-west-1',
-        },
+    const getRetroGamesByPlatformFn = new lambdanode.NodejsFunction(this, "GetRetroGamesByPlatformFn", {
+      ...appCommonFnProps,
+      entry: "./lambdas/getRetroGamesByPlatform.ts",
+      environment: {
+        ...appCommonFnProps.environment,
+        TRANSLATED_TABLE: translatedTable.tableName
       }
-      );
-      
-      const getAllRetroGamesFn = new lambdanode.NodejsFunction(
-        this,
-        "GetAllRetroGamesFn",
-        {
-          architecture: lambda.Architecture.ARM_64,
-          runtime: lambda.Runtime.NODEJS_18_X,
-          entry: `${__dirname}/../lambdas/getAllRetroGames.ts`,
-          timeout: cdk.Duration.seconds(10),
-          memorySize: 128,
-          environment: {
-            TABLE_NAME: retroGamesTable.tableName,
-            REGION: 'eu-west-1',
-          },
-        }
-        );
+    });
 
-        const updateRetroGameFn = new lambdanode.NodejsFunction(
-          this,
-          "UpdateRetroGameFn",
-          {
-            architecture: lambda.Architecture.ARM_64,
-            runtime: lambda.Runtime.NODEJS_18_X,
-            entry: `${__dirname}/../lambdas/updateRetroGame.ts`,
-            timeout: cdk.Duration.seconds(10),
-            memorySize: 128,
-            environment: {
-              TABLE_NAME: retroGamesTable.tableName,
-              REGION: 'eu-west-1',
-            },
-          }
-          );
-
-        const newRetroGameFn = new lambdanode.NodejsFunction(
-          this,
-          "AddRetroGameFn",
-          {
-            architecture: lambda.Architecture.ARM_64,
-            runtime: lambda.Runtime.NODEJS_18_X,
-            entry: `${__dirname}/../lambdas/addRetroGame.ts`,
-            timeout: cdk.Duration.seconds(10),
-            memorySize: 128,
-            environment: {
-              TABLE_NAME: retroGamesTable.tableName,
-              REGION: 'eu-west-1',
-            },
-          }
-          );
-        
-        new custom.AwsCustomResource(this, "retrogamesddbInitData", {
-          onCreate: {
-            service: "DynamoDB",
-            action: "batchWriteItem",
-            parameters: {
-              RequestItems: {
-                [retroGamesTable.tableName]: generateBatch(retroGames),
-              },
-            },
-            physicalResourceId: custom.PhysicalResourceId.of("retrogamesddbInitData"), //.of(Date.now().toString()),
-          },
-          policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
-            resources: [retroGamesTable.tableArn],
-          }),
-        });
-
-        const translatePolicy = new iam.PolicyStatement({
-          actions: ["translate:TranslateText"],
-          resources: ["*"]
-        })
-        
-        // Permissions 
-        retroGamesTable.grantReadData(getRetroGamesByPlatformFn)
-        retroGamesTable.grantReadData(getAllRetroGamesFn)
-        retroGamesTable.grantReadWriteData(newRetroGameFn)
-        retroGamesTable.grantReadWriteData(updateRetroGameFn)
-        translatedTable.grantReadWriteData(getRetroGamesByPlatformFn)
-        
-        getRetroGamesByPlatformFn.addToRolePolicy(translatePolicy)
-        
-        // REST API
-        const api = new apig.RestApi(this, "RestAPI", {
-          description: "demo api",
-          deployOptions: {
-            stageName: "dev",
-          },
-          defaultCorsPreflightOptions: {
-            allowHeaders: ["Content-Type", "X-Amz-Date"],
-            allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
-            allowCredentials: true,
-            allowOrigins: ["*"],
-          },
-        });
-    
-        // GAMES ENDPOINTS ------------------
-        const retroGamesEndpoint = api.root.addResource("retroGames");
-        retroGamesEndpoint.addMethod(
-          "GET",
-          new apig.LambdaIntegration(getAllRetroGamesFn, { proxy: true })
-        );
-
-        retroGamesEndpoint.addMethod(
-          "POST",
-          new apig.LambdaIntegration(newRetroGameFn, { proxy: true })
-        )
-
-        retroGamesEndpoint.addMethod(
-          "PUT",
-          new apig.LambdaIntegration(updateRetroGameFn, { proxy: true })
-        )
-    
-
-        // GAME BY PLATFORM ENDPOINTS ---------
-        const retroGameEndpoint = retroGamesEndpoint.addResource("{platform}");
-        retroGameEndpoint.addMethod(
-          "GET",
-          new apig.LambdaIntegration(getRetroGamesByPlatformFn, { proxy: true })
-        );
-
-      }
+    const getAllRetroGamesFn = new lambdanode.NodejsFunction(this, "GetAllRetroGamesFn", {
+      ...appCommonFnProps,
+      entry: "./lambdas/getAllRetroGames.ts"
     }
-    
+    );
+
+    const updateRetroGameFn = new lambdanode.NodejsFunction(this, "UpdateRetroGameFn", {
+      ...appCommonFnProps,
+      entry: "./lambdas/updateRetroGame.ts"
+    }
+    );
+
+    const newRetroGameFn = new lambdanode.NodejsFunction(this, "AddRetroGameFn", {
+        ...appCommonFnProps,
+        entry: "./lambdas/addRetroGame.ts"
+      }
+    );
+
+    const authorizerFn = new lambdanode.NodejsFunction(this, "AuthorizerFn", {
+      ...appCommonFnProps,
+      entry: "./lambdas/auth/authorizer.ts",
+    });
+
+    // Auth
+    const requestAuthorizer = new apig.RequestAuthorizer(
+      this,
+      "RequestAuthorizer",
+      {
+        identitySources: [apig.IdentitySource.header("cookie")],
+        handler: authorizerFn,
+        resultsCacheTtl: cdk.Duration.minutes(0),
+      }
+    );
+
+    new custom.AwsCustomResource(this, "retrogamesddbInitData", {
+      onCreate: {
+        service: "DynamoDB",
+        action: "batchWriteItem",
+        parameters: {
+          RequestItems: {
+            [retroGamesTable.tableName]: generateBatch(retroGames),
+          },
+        },
+        physicalResourceId: custom.PhysicalResourceId.of("retrogamesddbInitData"), //.of(Date.now().toString()),
+      },
+      policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: [retroGamesTable.tableArn],
+      }),
+    });
+
+    const translatePolicy = new iam.PolicyStatement({
+      actions: ["translate:TranslateText"],
+      resources: ["*"]
+    })
+
+    // Permissions 
+    retroGamesTable.grantReadData(getRetroGamesByPlatformFn)
+    retroGamesTable.grantReadData(getAllRetroGamesFn)
+    retroGamesTable.grantReadWriteData(newRetroGameFn)
+    retroGamesTable.grantReadWriteData(updateRetroGameFn)
+    translatedTable.grantReadWriteData(getRetroGamesByPlatformFn)
+
+    getRetroGamesByPlatformFn.addToRolePolicy(translatePolicy)
+
+    // REST API
+    const api = new apig.RestApi(this, "RestAPI", {
+      description: "demo api",
+      deployOptions: {
+        stageName: "dev",
+      },
+      defaultCorsPreflightOptions: {
+        allowHeaders: ["Content-Type", "X-Amz-Date"],
+        allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+        allowCredentials: true,
+        allowOrigins: ["*"],
+      },
+    });
+
+    // GAMES ENDPOINTS ------------------
+    const retroGamesEndpoint = api.root.addResource("retroGames");
+    retroGamesEndpoint.addMethod(
+      "GET",
+      new apig.LambdaIntegration(getAllRetroGamesFn, { proxy: true })
+    );
+
+    retroGamesEndpoint.addMethod(
+      "POST",
+      new apig.LambdaIntegration(newRetroGameFn, { proxy: true }), {
+        authorizer: requestAuthorizer,
+        authorizationType: apig.AuthorizationType.CUSTOM
+      }
+    )
+
+    retroGamesEndpoint.addMethod(
+      "PUT",
+      new apig.LambdaIntegration(updateRetroGameFn, { proxy: true }), {
+        authorizer: requestAuthorizer,
+        authorizationType: apig.AuthorizationType.CUSTOM
+      }
+    )
+
+
+    // GAME BY PLATFORM ENDPOINTS ---------
+    const retroGameEndpoint = retroGamesEndpoint.addResource("{platform}");
+    retroGameEndpoint.addMethod(
+      "GET",
+      new apig.LambdaIntegration(getRetroGamesByPlatformFn, { proxy: true })
+    );
+
+  }
+}
