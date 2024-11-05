@@ -3,7 +3,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import Ajv from "ajv";
 import schema from "../shared/types.schema.json";
-import * as cookie from 'cookie';
+import { CookieMap, parseCookies } from "./utils";
 import { extractUserIdFromJWT } from "../shared/util";
 
 const ajv = new Ajv();
@@ -40,35 +40,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
             };
         }
 
-        // Check for JWT
-        const cookies = event.headers.Cookie || event.headers.cookies
-        const parsedCookies = cookies ? cookie.parse(cookies) : {};
-        const jwtToken = parsedCookies["token"]
+        // Check for cookies. Using || {} here as we are checking for the cookie at auth level. Can't get here without token
+        const parsedCookies: CookieMap = parseCookies(event) || {}
+        const jwtToken = parsedCookies.token
 
-        // If no valid jwtToken is found
-        if (!jwtToken) {
-            return {
-                statusCode: 403,
-                headers: {
-                    "content-type": "application/json",
-                },
-                body: JSON.stringify({ message: "Unauthorized: No JWT token" }),
-            };
-        }
-
-        // Try get userId from JWT
+        // get userId from JWT - userId will be valid if code gets to here
         const userId = extractUserIdFromJWT(jwtToken)
-
-        // If no userId found
-        if (!userId) {
-            return {
-                statusCode: 403,
-                headers: {
-                    "content-type": "application/json",
-                },
-                body: JSON.stringify({ message: "Unauthorized: No JWT token" }),
-            };
-        }
 
         const item = {
             ...body,

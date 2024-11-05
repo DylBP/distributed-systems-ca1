@@ -1,11 +1,13 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, UpdateCommand, UpdateCommandInput } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand, QueryCommandInput, UpdateCommand, UpdateCommandInput } from "@aws-sdk/lib-dynamodb";
+import { parseCookies, CookieMap } from "./utils";
+import { extractUserIdFromJWT } from "../shared/util";
 
 const ddbDocClient = createDDbDocClient();
 
 
-export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
+export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => {
     try {
         console.log("[EVENT]", JSON.stringify(event));
         const body = event.body ? JSON.parse(event.body) : undefined;
@@ -20,6 +22,47 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
                     "content-type": "application/json",
                 },
                 body: JSON.stringify({ message: "Missing request body" }),
+            };
+        }
+
+        // Get object currently stored in the database to check userId
+        let fetchCommandInput: QueryCommandInput = {
+            TableName: process.env.TABLE_NAME,
+            KeyConditionExpression: "platform = :platform AND title = :title",
+            ExpressionAttributeValues: {
+              ":platform": gamePlatform,
+              ":title": title
+            }
+          }
+
+        const commandOutput = await ddbDocClient.send(
+            new QueryCommand(fetchCommandInput)
+        );
+
+        if (!commandOutput.Items || commandOutput.Items.length === 0) {
+            return {
+              statusCode: 404,
+              headers: {
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ Message: "Game to update not found" }),
+            };
+          }
+
+        // Check for cookies. Using || {} here as we are checking for the cookie at auth level. Can't get here without token
+        const parsedCookies: CookieMap = parseCookies(event) || {}
+        const jwtToken = parsedCookies.token
+
+        // get userId from JWT - userId will be valid if code gets to here
+        const userId = extractUserIdFromJWT(jwtToken)
+
+        if (commandOutput.Items[0].userId != userId) {
+            return {
+                statusCode: 401,
+                headers: {
+                    "content-type": "application/json",
+                },
+                body: JSON.stringify({ message: "Can only update a Retro Game that you have added yourself!" }),
             };
         }
 
