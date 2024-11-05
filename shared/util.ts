@@ -48,9 +48,16 @@ export async function translateJsonCollection(data: any, targetLanguageCode: str
 
 export function extractUserIdFromJWT(jwt: string): string | null {
   try {
+      // Split JWT into three components
       const [header, payload, signature] = jwt.split('.');
+
+      // Base64 decode the payload
       const decodedPayload = Buffer.from(payload, 'base64').toString('utf8');
+
+      // Store the decoded payload in { sub }
       const { sub } = JSON.parse(decodedPayload);
+
+      // Return sub (see jwt.io for more information on how this works - try putting in JWT to see structure)
       return sub || null;
   } catch (err) {
       console.error("Error decoding JWT:", err);
