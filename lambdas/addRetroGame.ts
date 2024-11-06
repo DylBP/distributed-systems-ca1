@@ -40,12 +40,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
             };
         }
 
-        // Check for cookies. Using || {} here as we are checking for the cookie at auth level. Can't get here without token
-        const parsedCookies: CookieMap = parseCookies(event) || {}
-        const jwtToken = parsedCookies.token
-
-        // get userId from JWT - userId will be valid if code gets to here
-        const userId = extractUserIdFromJWT(jwtToken)
+        // Get the userId from within the event itself:
+        // This example is showing how we can get this value from the EVENT
+        // In the update Lambda, I will show an example of how to get userId from the user supplied JWT - They will perform the same function
+        const userId = event.requestContext.authorizer?.principalId
 
         const item = {
             ...body,
@@ -57,7 +55,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
                 TableName: process.env.TABLE_NAME,
                 Item: item,
             })
-
         );
         return {
             statusCode: 201,

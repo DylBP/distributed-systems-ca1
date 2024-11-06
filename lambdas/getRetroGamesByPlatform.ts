@@ -95,7 +95,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
           statusCode: 200,
           headers: {
             "content-type": "application/json",
-            //"did-cache-hit": "false"
+            "cache-hit": "false"
           },
           body: JSON.stringify(translated),
         }
@@ -107,7 +107,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
         statusCode: 200,
         headers: {
           "content-type": "application/json",
-          //"did-cache-hit": "true"
+          "cache-hit": "true"
         },
         body: JSON.stringify(checkDatabaseCommandOutput.Items),
       }

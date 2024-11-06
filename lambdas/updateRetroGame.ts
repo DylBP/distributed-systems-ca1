@@ -3,9 +3,13 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, QueryCommandInput, UpdateCommand, UpdateCommandInput } from "@aws-sdk/lib-dynamodb";
 import { parseCookies, CookieMap } from "./utils";
 import { extractUserIdFromJWT } from "../shared/util";
+import schema from "../shared/types.schema.json";
+import Ajv from "ajv";
 
 const ddbDocClient = createDDbDocClient();
 
+const ajv = new Ajv();
+const isValidBodyParams = ajv.compile(schema.definitions["RetroGame"] || {});
 
 export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => {
     try {
@@ -15,6 +19,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
         const gamePlatform = body.platform
         const title = body.title
 
+        // If body is missing
         if (!body) {
             return {
                 statusCode: 400,
@@ -22,6 +27,20 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
                     "content-type": "application/json",
                 },
                 body: JSON.stringify({ message: "Missing request body" }),
+            };
+        }
+
+        // If body is present but invalid
+        if (!isValidBodyParams(body)) {
+            return {
+                statusCode: 500,
+                headers: {
+                    "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                    message: "Incorrect type. Must match RetroGame schema",
+                    schema: schema.definitions["RetroGame"],
+                }),
             };
         }
 
@@ -39,6 +58,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
             new QueryCommand(fetchCommandInput)
         );
 
+        // If game doesnt exist in the table
         if (!commandOutput.Items || commandOutput.Items.length === 0) {
             return {
               statusCode: 404,
@@ -50,12 +70,15 @@ export const handler: APIGatewayProxyHandlerV2 = async (event: any, context) => 
           }
 
         // Check for cookies. Using || {} here as we are checking for the cookie at auth level. Can't get here without token
+        // This method shown is parsing the cookie supplied by the user, and then taking out the user ID
+        // See /shared/util.ts for how the JTW is being parsed
         const parsedCookies: CookieMap = parseCookies(event) || {}
         const jwtToken = parsedCookies.token
 
         // get userId from JWT - userId will be valid if code gets to here
         const userId = extractUserIdFromJWT(jwtToken)
 
+        // Perform check to see if userId within the item is the same as the userId making the request
         if (commandOutput.Items[0].userId != userId) {
             return {
                 statusCode: 401,
