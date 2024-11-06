@@ -6,7 +6,7 @@ __Name:__ Dylan Butler Parry (20099082)
 
 
 
-__Demo:__ <Video url="https://youtu.be/Arhc-VlPCOM" />
+__Demo:__ [REST API Demonstration](https://youtu.be/Arhc-VlPCOM)
 
 
 
