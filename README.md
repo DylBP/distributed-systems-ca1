@@ -49,8 +49,7 @@ The primary database table contains retro game objects with the following attrib
 
 
 
-### Update constraint (if relevant).
-
+### Update constraint
 
 
 Authentication is required to access the POST and PUT endpoints - meaning only a user who is authenticated, and has a valid JWT is permitted to add/update the table.
@@ -64,7 +63,7 @@ userId matches, allow the user to perform the update. If the userId doesn't matc
 
 
 
-### Translation persistence (if relevant).
+### Translation persistence
 
 
 
@@ -76,9 +75,21 @@ This was verified through the use of HTTP headers - a custom header "cache-hit" 
 
 
 
-###  Extra (If relevant).
+###  Extra
 
 
 
 A Postman collection is available at the following url [Postman Collection - REST API v1](https://1drv.ms/u/s!AifmLuBQfqioje5VtFJerQCwYhdXnA?e=x3fJbu)
+
+
+
+### Steps to run
+
+
++ Git clone repository
++ npm install
++ cdk deploy
++ Take AppAPI URL and put into Postman URL variable, AppAuthAPI URL into AuthURL variable
++ Signup --> Confirm signup --> Signin
++ Take token from signin, and put into Postman variable
 
